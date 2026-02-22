@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Document - LegalLens</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 16px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      overflow: hidden;
+    }
+    .header {
+      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    .content { padding: 30px; }
+    .section { margin-bottom: 25px; }
+    .section h3 { margin-bottom: 10px; color: #333; font-size: 16px; }
+    .info-box {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 8px;
+      border: 1px solid #e5e7eb;
+      font-size: 14px;
+    }
+    .info-box div { margin-bottom: 8px; }
+    input[type="email"] {
+      width: 100%;
+      padding: 12px;
+      border: 2px solid #e5e7eb;
+      border-radius: 8px;
+      font-size: 14px;
+      margin-bottom: 15px;
+    }
+    button {
+      width: 100%;
+      padding: 14px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+    .btn-primary {
+      background: #6366f1;
+      color: white;
+    }
+    .btn-success {
+      background: #10b981;
+      color: white;
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 15px;
+    }
+    .tab {
+      flex: 1;
+      padding: 10px;
+      background: white;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      cursor: pointer;
+      text-align: center;
+      font-size: 14px;
+      font-weight: 600;
+    }
+    .tab.active {
+      background: #6366f1;
+      color: white;
+    }
+    canvas {
+      width: 100%;
+      height: 180px;
+      border: 2px solid #6366f1;
+      border-radius: 8px;
+      cursor: crosshair;
+      display: block;
+      background: white;
+    }
+    .type-input {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #6366f1;
+      border-radius: 8px;
+      font-size: 32px;
+      font-family: 'Brush Script MT', cursive;
+      text-align: center;
+    }
+    .error {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      font-size: 14px;
+    }
+    .success {
+      text-align: center;
+      padding: 40px;
+    }
+    .success-icon {
+      font-size: 80px;
+      margin-bottom: 20px;
+    }
+    .loading {
+      text-align: center;
+      padding: 60px;
+      color: #64748b;
+    }
+    .clear-btn {
+      padding: 8px 16px;
+      background: white;
+      border: 1px solid #ef4444;
+      color: #ef4444;
+      border-radius: 6px;
+      font-size: 12px;
+      margin-bottom: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>✍️ Sign Document</h1>
+      <p id="docName">Loading...</p>
+    </div>
+
+    <div class="content" id="app">
+      <div class="loading">
+        <div style="font-size: 48px;">⏳</div>
+        <div>Loading document...</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_URL = 'https://func-legallens-signatures.azurewebsites.net/api';
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenId = urlParams.get('token');
+
+    let state = {
+      token: null,
+      email: '',
+      emailVerified: false,
+      signature: null,
+      mode: 'draw',
+      typedName: '',
+      canvasEmpty: true,
+    };
+
+    let canvas, ctx;
+
+    // Initialize
+    (async function init() {
+      if (!tokenId) {
+        showError('Missing signature token in URL');
+        return;
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/validate/${tokenId}`);
+        const data = await response.json();
+
+        if (!response.ok) {
+          showError(data.error || 'Invalid signature link');
+          return;
+        }
+
+        state.token = data.token;
+        state.typedName = data.token.signerName;
+        document.getElementById('docName').textContent = data.token.contractName;
+        
+        showEmailVerification();
+      } catch (error) {
+        showError('Failed to load document: ' + error.message);
+      }
+    })();
+
+    // Show email verification
+    function showEmailVerification() {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="section">
+          <h3>Verify Your Email</h3>
+          <p style="color: #64748b; margin-bottom: 15px;">
+            Please confirm your email address to continue.
+          </p>
+          <input 
+            type="email" 
+            id="emailInput" 
+            placeholder="your.email@company.com"
+            value="${state.email}"
+          />
+          <div id="errorBox"></div>
+          <button class="btn-primary" onclick="verifyEmail()">Continue →</button>
+          <p style="font-size: 12px; color: #999; text-align: center; margin-top: 15px;">
+            Sent to: <strong>${state.token.signerEmail}</strong>
+          </p>
+        </div>
+      `;
+    }
+
+    // Verify email
+    function verifyEmail() {
+      const email = document.getElementById('emailInput').value;
+      
+      if (email.toLowerCase() !== state.token.signerEmail.toLowerCase()) {
+        document.getElementById('errorBox').innerHTML = 
+          '<div class="error">Email does not match invitation</div>';
+        return;
+      }
+
+      state.email = email;
+      state.emailVerified = true;
+      showSigningInterface();
+    }
+
+    // Show signing interface
+    function showSigningInterface() {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="section">
+          <h3>Document Details</h3>
+          <div class="info-box">
+            <div><strong>Document:</strong> ${state.token.contractName}</div>
+            <div><strong>Signer:</strong> ${state.token.signerName}</div>
+            <div><strong>Expires:</strong> ${new Date(state.token.expires).toLocaleDateString()}</div>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Your Signature</h3>
+          <div class="tabs">
+            <div class="tab active" onclick="setMode('draw')">Draw</div>
+            <div class="tab" onclick="setMode('type')">Type</div>
+          </div>
+          
+          <div id="signatureArea"></div>
+          
+          <div id="errorBox" style="margin-top: 15px;"></div>
+          <button class="btn-primary" onclick="captureSignature()" style="margin-top: 15px;">
+            Apply Signature
+          </button>
+        </div>
+
+        <div class="section" id="submitSection" style="display: none;">
+          <h3>Preview</h3>
+          <div class="info-box" style="text-align: center;">
+            <img id="signaturePreview" style="max-width: 100%; max-height: 80px;"/>
+          </div>
+          <button class="btn-primary" onclick="showSigningInterface()" style="margin-top: 10px; width: auto; padding: 8px 16px; font-size: 14px;">
+            Change Signature
+          </button>
+          <button class="btn-success" onclick="submitSignature()" style="margin-top: 15px;">
+            ✓ Complete Signature
+          </button>
+        </div>
+      `;
+
+      setMode('draw');
+    }
+
+    // Set signature mode
+    function setMode(mode) {
+      state.mode = mode;
+      
+      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
+      event?.target?.classList.add('active');
+
+      const area = document.getElementById('signatureArea');
+      
+      if (mode === 'draw') {
+        area.innerHTML = `
+          <button class="clear-btn" onclick="clearCanvas()">Clear</button>
+          <canvas id="signatureCanvas"></canvas>
+        `;
+        initCanvas();
+      } else {
+        area.innerHTML = `
+          <input 
+            type="text" 
+            class="type-input" 
+            id="typedName" 
+            placeholder="Type your name"
+            value="${state.typedName}"
+          />
+        `;
+      }
+    }
+
+    // Initialize canvas
+    function initCanvas() {
+      canvas = document.getElementById('signatureCanvas');
+      ctx = canvas.getContext('2d');
+      
+      canvas.width = canvas.offsetWidth * 2.5;
+      canvas.height = canvas.offsetHeight * 2.5;
+      ctx.scale(2.5, 2.5);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = '#000';
+      
+      state.canvasEmpty = true;
+
+      canvas.addEventListener('mousedown', startDrawing);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', stopDrawing);
+    }
+
+    function startDrawing(e) {
+      const rect = canvas.getBoundingClientRect();
+      ctx.beginPath();
+      ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+      canvas.isDrawing = true;
+      state.canvasEmpty = false;
+    }
+
+    function draw(e) {
+      if (!canvas.isDrawing) return;
+      const rect = canvas.getBoundingClientRect();
+      ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+      ctx.stroke();
+    }
+
+    function stopDrawing() {
+      canvas.isDrawing = false;
+    }
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      state.canvasEmpty = true;
+    }
+
+    // Capture signature
+    function captureSignature() {
+      let img;
+
+      if (state.mode === 'draw') {
+        if (state.canvasEmpty) {
+          showErrorMessage('Please draw your signature');
+          return;
+        }
+        img = canvas.toDataURL('image/png');
+      } else {
+        const name = document.getElementById('typedName').value.trim();
+        if (!name) {
+          showErrorMessage('Please type your name');
+          return;
+        }
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 400;
+        tempCanvas.height = 120;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.fillStyle = '#fff';
+        tempCtx.fillRect(0, 0, 400, 120);
+        tempCtx.fillStyle = '#000';
+        tempCtx.font = "48px 'Brush Script MT', cursive";
+        tempCtx.textAlign = 'center';
+        tempCtx.textBaseline = 'middle';
+        tempCtx.fillText(name, 200, 60);
+        img = tempCanvas.toDataURL('image/png');
+      }
+
+      state.signature = img;
+      document.getElementById('signaturePreview').src = img;
+      document.getElementById('submitSection').style.display = 'block';
+      document.querySelector('.section:nth-child(2)').style.display = 'none';
+    }
+
+    // Submit signature
+    async function submitSignature() {
+      const btn = event.target;
+      btn.disabled = true;
+      btn.textContent = '⏳ Submitting...';
+
+      try {
+        const response = await fetch(`${API_URL}/sign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            tokenId: tokenId,
+            email: state.email,
+            signature: state.signature,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Submission failed');
+        }
+
+        showSuccess();
+      } catch (error) {
+        showErrorMessage(error.message);
+        btn.disabled = false;
+        btn.textContent = '✓ Complete Signature';
+      }
+    }
+
+    // Show success
+    function showSuccess() {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div class="success">
+          <div class="success-icon">✅</div>
+          <h2 style="color: #10b981; margin-bottom: 10px;">Signature Complete!</h2>
+          <p style="color: #64748b;">Your signature has been submitted successfully.</p>
+          <p style="color: #999; font-size: 14px; margin-top: 20px;">
+            You can now close this window.
+          </p>
+        </div>
+      `;
+    }
+
+    // Show error
+    function showError(message) {
+      const app = document.getElementById('app');
+      app.innerHTML = `
+        <div style="text-align: center; padding: 40px;">
+          <div style="font-size: 64px; margin-bottom: 20px;">🚫</div>
+          <h2 style="color: #ef4444; margin-bottom: 10px;">Error</h2>
+          <p style="color: #64748b;">${message}</p>
+        </div>
+      `;
+    }
+
+    function showErrorMessage(message) {
+      const errorBox = document.getElementById('errorBox');
+      errorBox.innerHTML = `<div class="error">${message}</div>`;
+      setTimeout(() => errorBox.innerHTML = '', 5000);
+    }
+  </script>
+</body>
+</html>
