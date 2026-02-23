@@ -1,457 +1,716 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sign Document - LegalLens</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LegalLens — Sign Document</title>
+
+  <!-- PDF.js for in-browser PDF rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-      min-height: 100vh;
-      padding: 20px;
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --indigo: #6366f1;
+      --indigo-dark: #4f46e5;
+      --purple: #8b5cf6;
+      --green: #22c55e;
+      --red: #ef4444;
+      --gray-50: #f8fafc;
+      --gray-100: #f1f5f9;
+      --gray-200: #e2e8f0;
+      --gray-500: #64748b;
+      --gray-700: #334155;
+      --gray-900: #0f172a;
     }
-    .container {
-      max-width: 800px;
-      margin: 0 auto;
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--gray-100);
+      color: var(--gray-900);
+      min-height: 100vh;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
       background: white;
-      border-radius: 16px;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      border-bottom: 1px solid var(--gray-200);
+      padding: 14px 32px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+    .topbar-logo {
+      width: 36px; height: 36px;
+      background: linear-gradient(135deg, var(--indigo), var(--purple));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 18px;
+    }
+    .topbar-title { font-weight: 700; font-size: 18px; color: var(--gray-900); }
+    .topbar-subtitle { font-size: 13px; color: var(--gray-500); margin-left: auto; }
+
+    /* ── Layout ── */
+    .layout {
+      display: grid;
+      grid-template-columns: 1fr 400px;
+      gap: 0;
+      height: calc(100vh - 65px);
+    }
+
+    /* ── Left: PDF Viewer ── */
+    .pdf-panel {
+      background: #525659;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+      gap: 16px;
+    }
+    .pdf-loading {
+      color: white;
+      font-size: 15px;
+      margin-top: 60px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 16px;
+    }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .pdf-page-wrapper {
+      background: white;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      border-radius: 4px;
       overflow: hidden;
     }
-    .header {
-      background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    .pdf-page-wrapper canvas { display: block; }
+
+    .pdf-toolbar {
+      background: rgba(0,0,0,0.5);
       color: white;
-      padding: 30px;
-      text-align: center;
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 13px;
+      position: sticky;
+      bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
     }
-    .content { padding: 30px; }
-    .section { margin-bottom: 25px; }
-    .section h3 { margin-bottom: 10px; color: #333; font-size: 16px; }
-    .info-box {
-      background: #f8f9fa;
-      padding: 15px;
-      border-radius: 8px;
-      border: 1px solid #e5e7eb;
-      font-size: 14px;
-    }
-    .info-box div { margin-bottom: 8px; }
-    input[type="email"] {
-      width: 100%;
-      padding: 12px;
-      border: 2px solid #e5e7eb;
-      border-radius: 8px;
-      font-size: 14px;
-      margin-bottom: 15px;
-    }
-    button {
-      width: 100%;
-      padding: 14px;
+    .pdf-toolbar button {
+      background: rgba(255,255,255,0.15);
       border: none;
-      border-radius: 8px;
-      font-size: 16px;
-      font-weight: 600;
+      color: white;
+      padding: 4px 12px;
+      border-radius: 12px;
       cursor: pointer;
+      font-size: 13px;
+    }
+    .pdf-toolbar button:hover { background: rgba(255,255,255,0.25); }
+    .pdf-toolbar button:disabled { opacity: 0.4; cursor: default; }
+
+    /* ── Right: Sign Panel ── */
+    .sign-panel {
+      background: white;
+      border-left: 1px solid var(--gray-200);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Screens inside sign panel */
+    .screen { display: none; flex-direction: column; height: 100%; }
+    .screen.active { display: flex; }
+
+    /* Loading screen */
+    #screen-loading {
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: var(--gray-500);
+      font-size: 15px;
+    }
+    #screen-loading .spinner {
+      border-color: rgba(99,102,241,0.2);
+      border-top-color: var(--indigo);
+    }
+
+    /* Error screen */
+    #screen-error {
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+      text-align: center;
+      gap: 12px;
+    }
+    .error-icon { font-size: 48px; }
+    .error-title { font-size: 20px; font-weight: 700; color: var(--red); }
+    .error-msg { color: var(--gray-500); font-size: 14px; line-height: 1.6; }
+
+    /* Sign screen */
+    #screen-sign { padding: 28px; gap: 20px; }
+
+    .section-title {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--gray-500);
+      margin-bottom: 8px;
+    }
+
+    .contract-card {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 12px;
+      padding: 16px;
+    }
+    .contract-name { font-size: 17px; font-weight: 700; color: var(--gray-900); margin-bottom: 8px; }
+    .meta-row { display: flex; gap: 6px; align-items: center; font-size: 13px; color: var(--gray-500); margin-bottom: 4px; }
+
+    .email-field {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .email-field label { font-size: 13px; font-weight: 600; color: var(--gray-700); }
+    .email-field input {
+      border: 1.5px solid var(--gray-200);
+      border-radius: 8px;
+      padding: 10px 14px;
+      font-size: 14px;
+      color: var(--gray-900);
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .email-field input:focus { border-color: var(--indigo); }
+    .email-field input.error { border-color: var(--red); }
+
+    .sig-area {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .sig-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .sig-canvas-wrapper {
+      border: 2px dashed var(--gray-200);
+      border-radius: 12px;
+      background: var(--gray-50);
+      overflow: hidden;
+      position: relative;
+      transition: border-color 0.2s;
+    }
+    .sig-canvas-wrapper:hover { border-color: var(--indigo); }
+    .sig-canvas-wrapper canvas {
+      display: block;
+      cursor: crosshair;
+      touch-action: none;
+    }
+    .sig-placeholder {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--gray-500);
+      font-size: 13px;
+      pointer-events: none;
+      gap: 6px;
       transition: opacity 0.2s;
     }
-    button:disabled {
-      opacity: 0.5;
-      cursor: not-allowed;
-    }
-    .btn-primary {
-      background: #6366f1;
-      color: white;
-    }
-    .btn-success {
-      background: #10b981;
-      color: white;
-    }
-    .tabs {
-      display: flex;
-      gap: 8px;
-      margin-bottom: 15px;
-    }
-    .tab {
-      flex: 1;
-      padding: 10px;
-      background: white;
-      border: 1px solid #e5e7eb;
-      border-radius: 6px;
+    .sig-placeholder-icon { font-size: 28px; opacity: 0.4; }
+
+    .btn-clear {
+      background: none;
+      border: 1px solid var(--gray-200);
+      color: var(--gray-500);
+      padding: 5px 12px;
+      border-radius: 8px;
+      font-size: 12px;
       cursor: pointer;
-      text-align: center;
-      font-size: 14px;
-      font-weight: 600;
     }
-    .tab.active {
-      background: #6366f1;
+    .btn-clear:hover { background: var(--gray-100); }
+
+    .consent-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 10px;
+      padding: 14px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+    }
+    .consent-box input[type="checkbox"] { margin-top: 2px; accent-color: var(--green); }
+    .consent-box label { font-size: 13px; color: #166534; line-height: 1.5; }
+
+    .btn-submit {
+      background: linear-gradient(135deg, var(--indigo), var(--purple));
       color: white;
+      border: none;
+      border-radius: 12px;
+      padding: 16px;
+      font-size: 16px;
+      font-weight: 700;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: opacity 0.2s, transform 0.1s;
+      box-shadow: 0 4px 14px rgba(99,102,241,0.35);
     }
-    canvas {
-      width: 100%;
-      height: 180px;
-      border: 2px solid #6366f1;
-      border-radius: 8px;
-      cursor: crosshair;
-      display: block;
-      background: white;
-    }
-    .type-input {
-      width: 100%;
-      padding: 15px;
-      border: 2px solid #6366f1;
-      border-radius: 8px;
-      font-size: 32px;
-      font-family: 'Brush Script MT', cursive;
+    .btn-submit:hover { opacity: 0.92; transform: translateY(-1px); }
+    .btn-submit:active { transform: translateY(0); }
+    .btn-submit:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .security-note {
+      font-size: 11px;
+      color: var(--gray-500);
       text-align: center;
+      line-height: 1.5;
     }
-    .error {
-      background: #fef2f2;
-      border: 1px solid #fecaca;
-      color: #dc2626;
-      padding: 12px;
-      border-radius: 8px;
-      margin-bottom: 15px;
-      font-size: 14px;
-    }
-    .success {
-      text-align: center;
+
+    /* Success screen */
+    #screen-success {
+      align-items: center;
+      justify-content: center;
       padding: 40px;
+      text-align: center;
+      gap: 16px;
     }
     .success-icon {
-      font-size: 80px;
-      margin-bottom: 20px;
+      width: 80px; height: 80px;
+      background: linear-gradient(135deg, #22c55e, #16a34a);
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 36px;
+      box-shadow: 0 8px 24px rgba(34,197,94,0.3);
     }
-    .loading {
+    .success-title { font-size: 24px; font-weight: 800; color: var(--gray-900); }
+    .success-msg { font-size: 14px; color: var(--gray-500); line-height: 1.6; max-width: 280px; }
+    .success-file {
+      background: var(--gray-50);
+      border: 1px solid var(--gray-200);
+      border-radius: 10px;
+      padding: 12px 20px;
+      font-size: 13px;
+      color: var(--gray-700);
+      font-weight: 600;
+      width: 100%;
       text-align: center;
-      padding: 60px;
-      color: #64748b;
     }
-    .clear-btn {
-      padding: 8px 16px;
-      background: white;
-      border: 1px solid #ef4444;
-      color: #ef4444;
-      border-radius: 6px;
-      font-size: 12px;
-      margin-bottom: 10px;
-      cursor: pointer;
+
+    /* Submitting overlay */
+    #screen-submitting {
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      color: var(--gray-500);
+    }
+    #screen-submitting .spinner {
+      border-color: rgba(99,102,241,0.2);
+      border-top-color: var(--indigo);
+      width: 48px; height: 48px;
+    }
+    .submitting-text { font-size: 15px; font-weight: 600; color: var(--gray-700); }
+    .submitting-sub { font-size: 13px; color: var(--gray-500); }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+      .layout { grid-template-columns: 1fr; grid-template-rows: 50vh 1fr; }
+      .topbar { padding: 12px 16px; }
+      .topbar-subtitle { display: none; }
     }
   </style>
 </head>
 <body>
-  <div class="container">
-    <div class="header">
-      <h1>✍️ Sign Document</h1>
-      <p id="docName">Loading...</p>
-    </div>
 
-    <div class="content" id="app">
-      <div class="loading">
-        <div style="font-size: 48px;">⏳</div>
-        <div>Loading document...</div>
-      </div>
+<!-- Top bar -->
+<div class="topbar">
+  <div class="topbar-logo">✍️</div>
+  <div class="topbar-title">LegalLens E-Signature</div>
+  <div class="topbar-subtitle" id="topbar-contract">Loading document…</div>
+</div>
+
+<div class="layout">
+
+  <!-- ── Left: PDF Viewer ── -->
+  <div class="pdf-panel" id="pdf-panel">
+    <div class="pdf-loading" id="pdf-loading">
+      <div class="spinner"></div>
+      <span>Loading document…</span>
+    </div>
+    <div id="pdf-pages"></div>
+    <div class="pdf-toolbar" id="pdf-toolbar" style="display:none">
+      <button id="btn-prev" onclick="changePage(-1)">◀</button>
+      <span id="page-info">Page 1 of 1</span>
+      <button id="btn-next" onclick="changePage(1)">▶</button>
+      <span style="margin-left:8px; opacity:0.6;">Zoom:</span>
+      <button onclick="changeZoom(-0.25)">−</button>
+      <button onclick="changeZoom(0.25)">+</button>
     </div>
   </div>
 
-  <script>
-    const API_URL = 'https://func-legallens-signatures-e3hahsbua2crgrgm.canadacentral-01.azurewebsites.net/api';
-    const urlParams = new URLSearchParams(window.location.search);
-    const tokenId = urlParams.get('token');
+  <!-- ── Right: Sign Panel ── -->
+  <div class="sign-panel">
 
-    let state = {
-      token: null,
-      email: '',
-      emailVerified: false,
-      signature: null,
-      mode: 'draw',
-      typedName: '',
-      canvasEmpty: true,
+    <!-- Loading -->
+    <div class="screen active" id="screen-loading">
+      <div class="spinner"></div>
+      <span>Verifying token…</span>
+    </div>
+
+    <!-- Error -->
+    <div class="screen" id="screen-error">
+      <div class="error-icon">⚠️</div>
+      <div class="error-title">Unable to Load</div>
+      <div class="error-msg" id="error-message">The signing link is invalid or has expired.</div>
+    </div>
+
+    <!-- Sign -->
+    <div class="screen" id="screen-sign">
+      <div class="section-title">Document to Sign</div>
+      <div class="contract-card">
+        <div class="contract-name" id="contract-name">—</div>
+        <div class="meta-row">👤 <span id="signer-name">—</span></div>
+        <div class="meta-row">📅 Expires: <span id="expires-date">—</span></div>
+      </div>
+
+      <div class="email-field">
+        <label for="email-input">Confirm your email to proceed</label>
+        <input type="email" id="email-input" placeholder="your@email.com" autocomplete="email" />
+        <div id="email-error" style="color:var(--red);font-size:12px;display:none">
+          ❌ Email does not match the invitation
+        </div>
+      </div>
+
+      <div class="sig-area">
+        <div class="sig-header">
+          <div class="section-title" style="margin:0">Your Signature</div>
+          <button class="btn-clear" onclick="clearSignature()">Clear</button>
+        </div>
+        <div class="sig-canvas-wrapper">
+          <canvas id="sig-canvas" width="344" height="140"></canvas>
+          <div class="sig-placeholder" id="sig-placeholder">
+            <span class="sig-placeholder-icon">✍️</span>
+            <span>Draw your signature here</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="consent-box">
+        <input type="checkbox" id="consent-check" />
+        <label for="consent-check">
+          I agree that this electronic signature is legally binding and I have read and understood the document.
+        </label>
+      </div>
+
+      <button class="btn-submit" id="btn-submit" onclick="submitSignature()">
+        ✅ Sign Document
+      </button>
+
+      <div class="security-note">
+        🔒 Secured by LegalLens · Your signature is encrypted and timestamped
+      </div>
+    </div>
+
+    <!-- Submitting -->
+    <div class="screen" id="screen-submitting">
+      <div class="spinner"></div>
+      <div class="submitting-text">Submitting signature…</div>
+      <div class="submitting-sub">Please wait, this may take a few seconds</div>
+    </div>
+
+    <!-- Success -->
+    <div class="screen" id="screen-success">
+      <div class="success-icon">✅</div>
+      <div class="success-title">Document Signed!</div>
+      <div class="success-msg">
+        Your signature has been applied and the signed document has been saved securely.
+      </div>
+      <div class="success-file" id="success-filename">—</div>
+      <div class="success-msg" style="font-size:12px">
+        You may now close this window.
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────
+const API_BASE = 'https://func-legallens-signatures-e3hahsbua2crgrgm.canadacentral-01.azurewebsites.net/api';
+
+// ── State ─────────────────────────────────────────────────────────────────
+let tokenData = null;
+let pdfBytes = null;
+let pdfDoc = null;
+let currentPage = 1;
+let totalPages = 1;
+let currentScale = 1.4;
+let isDrawing = false;
+let hasSignature = false;
+let lastX = 0, lastY = 0;
+
+// ── Init ──────────────────────────────────────────────────────────────────
+const params = new URLSearchParams(window.location.search);
+const tokenId = params.get('token');
+
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+window.addEventListener('DOMContentLoaded', () => {
+  if (!tokenId) return showError('No signing token found in URL.');
+  initSignatureCanvas();
+  loadToken();
+});
+
+// ── Screen management ─────────────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById('screen-' + id).classList.add('active');
+}
+
+function showError(msg) {
+  document.getElementById('error-message').textContent = msg;
+  showScreen('error');
+}
+
+// ── Load token ─────────────────────────────────────────────────────────────
+async function loadToken() {
+  try {
+    const res = await fetch(`${API_BASE}/validate/${tokenId}`);
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || `HTTP ${res.status}`);
+    }
+
+    const data = await res.json();
+    tokenData = data;
+
+    // Populate UI
+    document.getElementById('contract-name').textContent = data.token.contractName;
+    document.getElementById('signer-name').textContent = data.token.signerName;
+    document.getElementById('expires-date').textContent =
+      new Date(data.token.expires).toLocaleDateString('en-US', { dateStyle: 'long' });
+    document.getElementById('topbar-contract').textContent = data.token.contractName;
+    document.getElementById('email-input').value = data.token.signerEmail;
+
+    showScreen('sign');
+
+    // Load PDF preview
+    loadPDFPreview();
+
+  } catch (err) {
+    showError(err.message || 'Failed to validate signing token.');
+  }
+}
+
+// ── PDF Preview ───────────────────────────────────────────────────────────
+async function loadPDFPreview() {
+  try {
+    const res = await fetch(`${API_BASE}/document/${tokenId}`);
+    if (!res.ok) throw new Error('Could not load document preview');
+
+    const arrayBuffer = await res.arrayBuffer();
+    pdfBytes = new Uint8Array(arrayBuffer);
+
+    pdfDoc = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+    totalPages = pdfDoc.numPages;
+
+    document.getElementById('pdf-loading').style.display = 'none';
+    document.getElementById('pdf-toolbar').style.display = 'flex';
+
+    await renderAllPages();
+  } catch (err) {
+    document.getElementById('pdf-loading').innerHTML =
+      '<span style="color:#f87171">⚠️ Preview unavailable</span>';
+  }
+}
+
+async function renderAllPages() {
+  const container = document.getElementById('pdf-pages');
+  container.innerHTML = '';
+
+  for (let i = 1; i <= totalPages; i++) {
+    const page = await pdfDoc.getPage(i);
+    const viewport = page.getViewport({ scale: currentScale });
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'pdf-page-wrapper';
+
+    const canvas = document.createElement('canvas');
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    wrapper.appendChild(canvas);
+    container.appendChild(wrapper);
+
+    await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+  }
+
+  updatePageInfo();
+}
+
+function updatePageInfo() {
+  document.getElementById('page-info').textContent = `${totalPages} page${totalPages > 1 ? 's' : ''}`;
+  document.getElementById('btn-prev').disabled = true;
+  document.getElementById('btn-next').disabled = true;
+}
+
+function changePage(delta) {
+  currentPage = Math.max(1, Math.min(totalPages, currentPage + delta));
+  renderAllPages();
+}
+
+async function changeZoom(delta) {
+  currentScale = Math.max(0.5, Math.min(3, currentScale + delta));
+  if (pdfDoc) await renderAllPages();
+}
+
+// ── Signature Canvas ──────────────────────────────────────────────────────
+function initSignatureCanvas() {
+  const canvas = document.getElementById('sig-canvas');
+  const ctx = canvas.getContext('2d');
+
+  // Scale canvas for high-DPI screens
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = (rect.width || 344) * dpr;
+  canvas.height = (rect.height || 140) * dpr;
+  ctx.scale(dpr, dpr);
+  canvas.style.width = (rect.width || 344) + 'px';
+  canvas.style.height = '140px';
+
+  ctx.strokeStyle = '#1e293b';
+  ctx.lineWidth = 2.5;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const src = e.touches ? e.touches[0] : e;
+    return {
+      x: (src.clientX - r.left),
+      y: (src.clientY - r.top),
     };
+  }
 
-    let canvas, ctx;
+  function startDraw(e) {
+    e.preventDefault();
+    isDrawing = true;
+    const pos = getPos(e);
+    lastX = pos.x; lastY = pos.y;
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+  }
 
-    // Initialize
-    (async function init() {
-      if (!tokenId) {
-        showError('Missing signature token in URL');
-        return;
-      }
+  function draw(e) {
+    if (!isDrawing) return;
+    e.preventDefault();
+    const pos = getPos(e);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+    lastX = pos.x; lastY = pos.y;
+    hasSignature = true;
+    document.getElementById('sig-placeholder').style.opacity = '0';
+  }
 
-      try {
-        const response = await fetch(`${API_URL}/validate/${tokenId}`);
-        const data = await response.json();
+  function endDraw() { isDrawing = false; }
 
-        if (!response.ok) {
-          showError(data.error || 'Invalid signature link');
-          return;
-        }
+  canvas.addEventListener('mousedown', startDraw);
+  canvas.addEventListener('mousemove', draw);
+  canvas.addEventListener('mouseup', endDraw);
+  canvas.addEventListener('mouseleave', endDraw);
+  canvas.addEventListener('touchstart', startDraw, { passive: false });
+  canvas.addEventListener('touchmove', draw, { passive: false });
+  canvas.addEventListener('touchend', endDraw);
+}
 
-        state.token = data.token;
-        state.typedName = data.token.signerName;
-        document.getElementById('docName').textContent = data.token.contractName;
-        
-        showEmailVerification();
-      } catch (error) {
-        showError('Failed to load document: ' + error.message);
-      }
-    })();
+function clearSignature() {
+  const canvas = document.getElementById('sig-canvas');
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  hasSignature = false;
+  document.getElementById('sig-placeholder').style.opacity = '1';
+}
 
-    // Show email verification
-    function showEmailVerification() {
-      const app = document.getElementById('app');
-      app.innerHTML = `
-        <div class="section">
-          <h3>Verify Your Email</h3>
-          <p style="color: #64748b; margin-bottom: 15px;">
-            Please confirm your email address to continue.
-          </p>
-          <input 
-            type="email" 
-            id="emailInput" 
-            placeholder="your.email@company.com"
-            value="${state.email}"
-          />
-          <div id="errorBox"></div>
-          <button class="btn-primary" onclick="verifyEmail()">Continue →</button>
-          <p style="font-size: 12px; color: #999; text-align: center; margin-top: 15px;">
-            Sent to: <strong>${state.token.signerEmail}</strong>
-          </p>
-        </div>
-      `;
-    }
+// ── Submit ────────────────────────────────────────────────────────────────
+async function submitSignature() {
+  const email = document.getElementById('email-input').value.trim();
+  const consent = document.getElementById('consent-check').checked;
+  const emailErr = document.getElementById('email-error');
+  const emailInput = document.getElementById('email-input');
 
-    // Verify email
-    function verifyEmail() {
-      const email = document.getElementById('emailInput').value;
-      
-      if (email.toLowerCase() !== state.token.signerEmail.toLowerCase()) {
-        document.getElementById('errorBox').innerHTML = 
-          '<div class="error">Email does not match invitation</div>';
-        return;
-      }
+  // Validate email
+  if (email.toLowerCase() !== tokenData.token.signerEmail.toLowerCase()) {
+    emailInput.classList.add('error');
+    emailErr.style.display = 'block';
+    emailInput.focus();
+    return;
+  }
+  emailInput.classList.remove('error');
+  emailErr.style.display = 'none';
 
-      state.email = email;
-      state.emailVerified = true;
-      showSigningInterface();
-    }
+  if (!hasSignature) {
+    alert('Please draw your signature before submitting.');
+    return;
+  }
 
-    // Show signing interface
-    function showSigningInterface() {
-      const app = document.getElementById('app');
-      app.innerHTML = `
-        <div class="section">
-          <h3>Document Details</h3>
-          <div class="info-box">
-            <div><strong>Document:</strong> ${state.token.contractName}</div>
-            <div><strong>Signer:</strong> ${state.token.signerName}</div>
-            <div><strong>Expires:</strong> ${new Date(state.token.expires).toLocaleDateString()}</div>
-          </div>
-        </div>
+  if (!consent) {
+    alert('Please check the consent box to confirm you agree.');
+    return;
+  }
 
-        <div class="section">
-          <h3>Your Signature</h3>
-          <div class="tabs">
-            <div class="tab active" onclick="setMode('draw')">Draw</div>
-            <div class="tab" onclick="setMode('type')">Type</div>
-          </div>
-          
-          <div id="signatureArea"></div>
-          
-          <div id="errorBox" style="margin-top: 15px;"></div>
-          <button class="btn-primary" onclick="captureSignature()" style="margin-top: 15px;">
-            Apply Signature
-          </button>
-        </div>
+  // Get signature as base64 PNG
+  const canvas = document.getElementById('sig-canvas');
+  const signatureData = canvas.toDataURL('image/png');
 
-        <div class="section" id="submitSection" style="display: none;">
-          <h3>Preview</h3>
-          <div class="info-box" style="text-align: center;">
-            <img id="signaturePreview" style="max-width: 100%; max-height: 80px;"/>
-          </div>
-          <button class="btn-primary" onclick="showSigningInterface()" style="margin-top: 10px; width: auto; padding: 8px 16px; font-size: 14px;">
-            Change Signature
-          </button>
-          <button class="btn-success" onclick="submitSignature()" style="margin-top: 15px;">
-            ✓ Complete Signature
-          </button>
-        </div>
-      `;
+  showScreen('submitting');
 
-      setMode('draw');
-    }
+  try {
+    const res = await fetch(`${API_BASE}/sign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tokenId,
+        email,
+        signature: signatureData,
+      }),
+    });
 
-    // Set signature mode
-    function setMode(mode) {
-      state.mode = mode;
-      
-      document.querySelectorAll('.tab').forEach(tab => tab.classList.remove('active'));
-      event?.target?.classList.add('active');
+    const result = await res.json();
 
-      const area = document.getElementById('signatureArea');
-      
-      if (mode === 'draw') {
-        area.innerHTML = `
-          <button class="clear-btn" onclick="clearCanvas()">Clear</button>
-          <canvas id="signatureCanvas"></canvas>
-        `;
-        initCanvas();
-      } else {
-        area.innerHTML = `
-          <input 
-            type="text" 
-            class="type-input" 
-            id="typedName" 
-            placeholder="Type your name"
-            value="${state.typedName}"
-          />
-        `;
-      }
-    }
+    if (!res.ok) throw new Error(result.error || `HTTP ${res.status}`);
 
-    // Initialize canvas
-    function initCanvas() {
-      canvas = document.getElementById('signatureCanvas');
-      ctx = canvas.getContext('2d');
-      
-      canvas.width = canvas.offsetWidth * 2.5;
-      canvas.height = canvas.offsetHeight * 2.5;
-      ctx.scale(2.5, 2.5);
-      ctx.lineCap = 'round';
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = '#000';
-      
-      state.canvasEmpty = true;
+    // Success
+    document.getElementById('success-filename').textContent =
+      '📄 ' + (result.signedDocument || 'Document signed successfully');
+    showScreen('success');
 
-      canvas.addEventListener('mousedown', startDrawing);
-      canvas.addEventListener('mousemove', draw);
-      canvas.addEventListener('mouseup', stopDrawing);
-    }
-
-    function startDrawing(e) {
-      const rect = canvas.getBoundingClientRect();
-      ctx.beginPath();
-      ctx.moveTo(e.clientX - rect.left, e.clientY - rect.top);
-      canvas.isDrawing = true;
-      state.canvasEmpty = false;
-    }
-
-    function draw(e) {
-      if (!canvas.isDrawing) return;
-      const rect = canvas.getBoundingClientRect();
-      ctx.lineTo(e.clientX - rect.left, e.clientY - rect.top);
-      ctx.stroke();
-    }
-
-    function stopDrawing() {
-      canvas.isDrawing = false;
-    }
-
-    function clearCanvas() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      state.canvasEmpty = true;
-    }
-
-    // Capture signature
-    function captureSignature() {
-      let img;
-
-      if (state.mode === 'draw') {
-        if (state.canvasEmpty) {
-          showErrorMessage('Please draw your signature');
-          return;
-        }
-        img = canvas.toDataURL('image/png');
-      } else {
-        const name = document.getElementById('typedName').value.trim();
-        if (!name) {
-          showErrorMessage('Please type your name');
-          return;
-        }
-        
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = 400;
-        tempCanvas.height = 120;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.fillStyle = '#fff';
-        tempCtx.fillRect(0, 0, 400, 120);
-        tempCtx.fillStyle = '#000';
-        tempCtx.font = "48px 'Brush Script MT', cursive";
-        tempCtx.textAlign = 'center';
-        tempCtx.textBaseline = 'middle';
-        tempCtx.fillText(name, 200, 60);
-        img = tempCanvas.toDataURL('image/png');
-      }
-
-      state.signature = img;
-      document.getElementById('signaturePreview').src = img;
-      document.getElementById('submitSection').style.display = 'block';
-      document.querySelector('.section:nth-child(2)').style.display = 'none';
-    }
-
-    // Submit signature
-    async function submitSignature() {
-      const btn = event.target;
-      btn.disabled = true;
-      btn.textContent = '⏳ Submitting...';
-
-      try {
-        const response = await fetch(`${API_URL}/sign`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tokenId: tokenId,
-            email: state.email,
-            signature: state.signature,
-          }),
-        });
-
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Submission failed');
-        }
-
-        showSuccess();
-      } catch (error) {
-        showErrorMessage(error.message);
-        btn.disabled = false;
-        btn.textContent = '✓ Complete Signature';
-      }
-    }
-
-    // Show success
-    function showSuccess() {
-      const app = document.getElementById('app');
-      app.innerHTML = `
-        <div class="success">
-          <div class="success-icon">✅</div>
-          <h2 style="color: #10b981; margin-bottom: 10px;">Signature Complete!</h2>
-          <p style="color: #64748b;">Your signature has been submitted successfully.</p>
-          <p style="color: #999; font-size: 14px; margin-top: 20px;">
-            You can now close this window.
-          </p>
-        </div>
-      `;
-    }
-
-    // Show error
-    function showError(message) {
-      const app = document.getElementById('app');
-      app.innerHTML = `
-        <div style="text-align: center; padding: 40px;">
-          <div style="font-size: 64px; margin-bottom: 20px;">🚫</div>
-          <h2 style="color: #ef4444; margin-bottom: 10px;">Error</h2>
-          <p style="color: #64748b;">${message}</p>
-        </div>
-      `;
-    }
-
-    function showErrorMessage(message) {
-      const errorBox = document.getElementById('errorBox');
-      errorBox.innerHTML = `<div class="error">${message}</div>`;
-      setTimeout(() => errorBox.innerHTML = '', 5000);
-    }
-  </script>
+  } catch (err) {
+    showError('Submission failed: ' + (err.message || 'Unknown error'));
+  }
+}
+</script>
 </body>
 </html>
