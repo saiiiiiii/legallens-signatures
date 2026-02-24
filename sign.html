@@ -340,15 +340,57 @@ html,body{height:100%;font-family:'DM Sans',system-ui,sans-serif;background:var(
 
   <!-- ── PDF Panel (locked until email verified) ── -->
   <div class="pdf-panel locked" id="pdf-panel">
+    <!-- Loading state -->
     <div class="pdf-loading-box" id="pdf-loading">
       <div class="spinner" style="border-color:rgba(255,255,255,.15);border-top-color:#fff"></div>
       <span>Loading document…</span>
     </div>
+
+    <!-- PDF renderer (pdf.js) -->
     <div id="pdf-pages"></div>
     <div class="pdf-toolbar" id="pdf-toolbar" style="display:none">
       <span id="page-count">—</span>
       <button onclick="changeZoom(-.25)">−</button>
       <button onclick="changeZoom(.25)">+</button>
+    </div>
+
+    <!-- Plain-text viewer -->
+    <div id="txt-viewer" style="display:none;width:100%;max-width:860px">
+      <div style="background:#fff;border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,.4);overflow:hidden">
+        <div style="background:#2d3035;padding:10px 18px;font-size:12px;color:#94a3b8;font-weight:500;display:flex;align-items:center;gap:8px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+          <span id="txt-filename">document.txt</span>
+        </div>
+        <pre id="txt-content" style="padding:24px;font-family:'Courier New',monospace;font-size:13px;line-height:1.7;color:#1e293b;white-space:pre-wrap;word-break:break-word;max-height:calc(100vh - 200px);overflow-y:auto;margin:0"></pre>
+      </div>
+    </div>
+
+    <!-- DOCX download prompt (browsers can't render Word files inline) -->
+    <div id="docx-viewer" style="display:none;flex-direction:column;align-items:center;justify-content:center;gap:16px;margin-top:60px;text-align:center">
+      <div style="width:72px;height:72px;background:#2b579a;border-radius:16px;display:flex;align-items:center;justify-content:center">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+      </div>
+      <div style="color:#fff;font-size:16px;font-weight:700" id="docx-filename">Document.docx</div>
+      <div style="color:#94a3b8;font-size:13px;max-width:280px;line-height:1.6">
+        Word documents cannot be previewed in the browser.<br/>Download to view the full document before signing.
+      </div>
+      <button onclick="downloadDocx()" style="background:linear-gradient(135deg,#2b579a,#1e3f6f);color:#fff;border:none;border-radius:10px;padding:12px 24px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;gap:8px;box-shadow:0 4px 14px rgba(43,87,154,.4)">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Download Word Document
+      </button>
+      <div style="color:#64748b;font-size:11px">Read the document carefully before signing</div>
+    </div>
+
+    <!-- Error state -->
+    <div id="pdf-error" style="display:none;flex-direction:column;align-items:center;gap:12px;margin-top:60px;text-align:center;max-width:280px">
+      <div style="width:52px;height:52px;border-radius:50%;background:rgba(239,68,68,.15);border:1px solid rgba(239,68,68,.3);display:flex;align-items:center;justify-content:center">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+      </div>
+      <div style="color:#f87171;font-size:14px;font-weight:600">Document Preview Unavailable</div>
+      <div id="pdf-error-msg" style="color:#94a3b8;font-size:12px;line-height:1.6"></div>
+      <button onclick="retryLoadDoc()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.2);color:#fff;border-radius:8px;padding:8px 16px;font-size:12px;cursor:pointer;font-family:inherit">
+        Retry
+      </button>
     </div>
   </div>
 
@@ -699,23 +741,100 @@ function verifyEmail() {
   showScreen('sign');
 }
 
-// ── PDF Preview ───────────────────────────────────────────────────────────
+// ── Document Preview (PDF / TXT / DOCX) ──────────────────────────────────
+let docxBlobUrl = null; // stored for DOCX download
+
+function showPdfError(msg) {
+  document.getElementById('pdf-loading').style.display  = 'none';
+  document.getElementById('pdf-error').style.display    = 'flex';
+  document.getElementById('pdf-error-msg').textContent  = msg;
+}
+function hideAllViewers() {
+  document.getElementById('pdf-loading').style.display  = 'none';
+  document.getElementById('pdf-pages').style.display    = 'none';
+  document.getElementById('pdf-toolbar').style.display  = 'none';
+  document.getElementById('txt-viewer').style.display   = 'none';
+  document.getElementById('docx-viewer').style.display  = 'none';
+  document.getElementById('pdf-error').style.display    = 'none';
+}
+
 async function loadPDF() {
+  // Called in background — stays blurred until email verified
   try {
     const res = await fetch(`${API_BASE}/document/${tokenId}`);
-    if (!res.ok) throw new Error('Preview unavailable');
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      showPdfError(err.error || `Server returned ${res.status}. The document may not exist in SharePoint.`);
+      return;
+    }
+
+    const contentType = (res.headers.get('Content-Type') || '').toLowerCase();
     const buf = await res.arrayBuffer();
-    pdfDoc    = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
-    document.getElementById('pdf-loading').style.display  = 'none';
-    document.getElementById('pdf-toolbar').style.display  = 'flex';
-    document.getElementById('page-count').textContent =
-      pdfDoc.numPages + ' page' + (pdfDoc.numPages > 1 ? 's' : '');
-    renderAllPages();
-  } catch {
-    document.getElementById('pdf-loading').innerHTML =
-      '<span style="color:#f87171;font-size:13px">Document preview unavailable</span>';
+
+    // ── PDF ───────────────────────────────────────────────────────────
+    if (contentType.includes('pdf')) {
+      try {
+        pdfDoc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;
+      } catch (pdfErr) {
+        showPdfError('PDF could not be parsed. The file may be corrupted or password-protected.');
+        return;
+      }
+      hideAllViewers();
+      document.getElementById('pdf-pages').style.display   = 'block';
+      document.getElementById('pdf-toolbar').style.display = 'flex';
+      document.getElementById('page-count').textContent    =
+        pdfDoc.numPages + ' page' + (pdfDoc.numPages > 1 ? 's' : '');
+      renderAllPages();
+      return;
+    }
+
+    // ── Plain text (.txt) ─────────────────────────────────────────────
+    if (contentType.includes('text/plain') || contentType.includes('text/')) {
+      const text     = new TextDecoder('utf-8').decode(buf);
+      const filename = tokenData?.token?.fileName || 'document.txt';
+      hideAllViewers();
+      document.getElementById('txt-filename').textContent = filename;
+      document.getElementById('txt-content').textContent  = text || '(Empty document)';
+      document.getElementById('txt-viewer').style.display = 'block';
+      return;
+    }
+
+    // ── Word document (.docx / .doc) ──────────────────────────────────
+    if (contentType.includes('wordprocessingml') || contentType.includes('msword') || contentType.includes('octet-stream')) {
+      const filename = tokenData?.token?.fileName || 'document.docx';
+      const blob     = new Blob([buf], { type: contentType });
+      docxBlobUrl    = URL.createObjectURL(blob);
+      hideAllViewers();
+      document.getElementById('docx-filename').textContent = filename;
+      document.getElementById('docx-viewer').style.display = 'flex';
+      return;
+    }
+
+    // ── Unknown type — show error ─────────────────────────────────────
+    showPdfError(`Unsupported file type: ${contentType}. Only PDF, TXT, and DOCX are supported for preview.`);
+
+  } catch (fetchErr) {
+    showPdfError('Could not reach the document server. Check your connection and try again.');
   }
 }
+
+function downloadDocx() {
+  if (!docxBlobUrl) return;
+  const a = document.createElement('a');
+  a.href     = docxBlobUrl;
+  a.download = tokenData?.token?.fileName || 'document.docx';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+}
+
+function retryLoadDoc() {
+  document.getElementById('pdf-error').style.display   = 'none';
+  document.getElementById('pdf-loading').style.display = 'flex';
+  loadPDF();
+}
+
 async function renderAllPages() {
   const container = document.getElementById('pdf-pages');
   container.innerHTML = '';
@@ -729,6 +848,7 @@ async function renderAllPages() {
     await page.render({ canvasContext: canvas.getContext('2d'), viewport: vp }).promise;
   }
 }
+
 async function changeZoom(d) {
   scale = Math.max(.5, Math.min(3, scale + d));
   if (pdfDoc) await renderAllPages();
