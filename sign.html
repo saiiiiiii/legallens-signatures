@@ -1011,7 +1011,7 @@ async function submitSig() {
   showScreen('submitting');
 
   try {
-    const res = await fetch(`${API_BASE}/sign`, {
+    const res = await fetch(`${API_BASE}/submitSignature`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ tokenId, email, signature: sig }),
